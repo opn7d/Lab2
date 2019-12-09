@@ -1,0 +1,77 @@
+from keras.layers import Input, Dense
+from keras.models import Model
+from keras import regularizers
+from keras.datasets import mnist
+import numpy as np
+import matplotlib.pyplot as plt
+
+# this is the size of our encoded representations
+encoding_dim = 32  # 32 floats -> compression of factor 24.5, assuming the input is 784 floats
+
+# the placeholder for input
+input_img = Input(shape=(784,))
+# "encoded" is the encoded representation of the input
+encoded = Dense(encoding_dim, activation='relu')(input_img)
+# adding another encoding layer
+encoded = Dense(encoding_dim, activation='relu', activity_regularizer=regularizers.l1(10e-5))(input_img)
+# "decoded" is the reconstruction of the input (decodes the input)
+decoded = Dense(784, activation='sigmoid')(encoded)
+
+# maps an input to its reconstruction
+autoencoder = Model(input_img, decoded)
+# maps an input to its encoded representation
+encoder = Model(input_img, encoded)
+# create placeholder for an encoded input
+encoded_input = Input(shape=(encoding_dim,))
+# retrieve the last layer of the autoencoder model
+decoder_layer = autoencoder.layers[-1]
+# create the decoder
+decoder = Model(encoded_input, decoder_layer(encoded_input))
+autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
+
+# loading the data from mnist
+(x_train, _), (x_test, _) = mnist.load_data()
+# initializes variables
+x_train = x_train.astype('float32') / 255.
+x_test = x_test.astype('float32') / 255.
+# reshapes so no error
+x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
+x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
+
+# introducing noise here
+noise_factor = 0.5
+x_train_noisy = x_train + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=x_train.shape)
+x_test_noisy = x_test + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=x_test.shape)
+
+# fit model with noise as well as trained data
+autoencoder.fit(x_train_noisy, x_train,
+                epochs=10,
+                batch_size=256,
+                shuffle=True,
+                validation_data=(x_test_noisy, x_test_noisy))
+
+# encode and decode some digits
+encoded_imgs = encoder.predict(x_test)
+# predicting what the image will be
+decoded_imgs = decoder.predict(encoded_imgs)
+
+# sets range for data
+n = 1
+plt.figure(figsize=(20, 4))
+# making the plot for matplotlib
+for i in range(n):
+    ax = plt.subplot(2, n, i + 1)
+    # with array shape of 784 it has to reshape consistently
+    plt.imshow(x_test[i].reshape(28, 28))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    # this is the decoded image
+    ax = plt.subplot(2, n, i + 1 + n)
+    plt.imshow(decoded_imgs[i].reshape(28, 28))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+# showing plot
+plt.show()
